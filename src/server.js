@@ -1,7 +1,7 @@
 const xml = require("xml2js"), http = require("http"), fs = require("fs"), request = require("request");
 
 const classes = require("./classes.js");
-const Match = classes.Match, Team = classes.Team, Drive = classes.Drive, Play = classes.Play;
+const Week = classes.Week, Match = classes.Match, Team = classes.Team, Drive = classes.Drive, Play = classes.Play;
 
 const schedule_url = "http://www.nfl.com/ajax/scorestrip?season=%1&seasonType=%2&week=%3";
 const game_url = "http://www.nfl.com/liveupdate/game-center/%1/%1_gtd.json";
@@ -20,40 +20,32 @@ server.listen(PORT);
 */
 
 var gameList = {};
-var weekEids = {};
+var weekList = [];
 
 
 var lastUpdate = 0;
-function updateCycle() {
-	console.log("New Cycle");
-	const currentTime = Date.now();
-	if (lastUpdate === 0) lastUpdate = currentTime;
-	
-	if (currentTime - lastUpdate > 60 * 60 * 1000) {
-		lastUpdate = currenTime;
-		for (var i = 1, seasonType = "PRE", week = 1; i != 25; i++) {
-			if (i == 5) {
-				week -= 4;
-				seasonType = "REG";
-			}
 
-			if (week > 17) seasonType = "POST";
-			if (week == 20) week++;
-			
-			week++;
-			updateSchedule(YEAR, seasonType, week);
-		}
-	}
+function updateCycle() {
+	const currentTime = Date.now();
+
 	for (eid in gameList) {
 		var currentMatch = gameList[eid];
-		if (currentMatch.quarter.indexOf("Final") != 0 && currentTime > currentMatch.date - 30 * 60 * 1000) {
+		console.log(eid, currentMatch);
+		if (!currentMatch.over) {
 			console.log("UpdateGame: starting update for", eid);
 			updateGame(eid);
 		}
 	}
+	
 }
-setInterval(updateCycle, 15000);
-updateCycle();
+
+function init() {
+	updateSchedule(YEAR);
+	//setInterval(updateCycle, 15000);
+}
+init();
+
+
 
 
 function httpRequest(path, callback) {
@@ -76,53 +68,66 @@ function httpRequest(path, callback) {
 	}); */
 }
 
-function updateSchedule(year, seasonType, week) {
-	var path = schedule_url.replace("%1", year).replace("%2", seasonType).replace("%3", week);
-	
-	httpRequest(path, (data) => {
-		xml.parseString(data, (err, result) => {
-			if (typeof(result["ss"]) != "object") return;
-
-			var rootXML = result["ss"]["gms"][0]["g"];
+function updateSchedule(year, weekStart, weekEnd) {
+	weekStart = weekStart || 1;
+	weekEnd = weekEnd || 26;
+	//0 - 3: Preseason Week 1 - Week 4
+	//4 - 20: Regular Season Week 1 - Week 17
+	//21 - 24: Post Season Week 18 - Week 20 & Week 22
+	for (var i = weekStart, seasonType = "PRE"; i < weekEnd; i++) {
+		var week = i;
 		
-			for (var i = 0; i != rootXML.length; i++) {
-				var xmlGame = rootXML[i]["$"], eid = xmlGame.eid;				
+		if (i > 4) {
+			week -= 4;
+			seasonType = "REG";
+		}
+		if (week > 17) seasonType = "POST";
+		if (week == 21) week++;
+	
+		var path = schedule_url.replace("%1", year).replace("%2", seasonType).replace("%3", week);
+		
+		httpRequest(path, (data) => {
+			xml.parseString(data, (err, result) => {
+				if (typeof(result["ss"]) != "object") return;
 
-				if (!(eid in gameList)) gameList[eid] = new Match(eid, null, new Team(xmlGame.h), new Team(xmlGame.v));
-				var currentMatch = gameList[eid];
-				
-				var rawTime = xmlGame.t.split(":");					 	//time (format hh:mm)
-				
-				var rawDate = new Date(parseInt(eid.substr(0, 4)),		//year
-						parseInt(eid.substr(4, 2)) - 1,					//month (-1 since January has index 0)
-						parseInt(eid.substr(6, 2)),						//day
-						parseInt(rawTime[0]),							//hour
-						parseInt(rawTime[1]));							//minute
+				var rootXML = result["ss"]["gms"][0]["g"];
+			
+				for (var i = 0; i != rootXML.length; i++) {
+					var xmlGame = rootXML[i]["$"], eid = xmlGame.eid;				
 
-				currentMatch.date = rawDate.getTime();
+					if (!(eid in gameList)) gameList[eid] = new Match(eid, null, new Team(xmlGame.h), new Team(xmlGame.v));
+					var currentMatch = gameList[eid];
+					
+					var rawTime = xmlGame.t.split(":");					 	//time (format hh:mm)
+					
+					var rawDate = new Date(parseInt(eid.substr(0, 4)),		//year
+							parseInt(eid.substr(4, 2)) - 1,					//month (-1 since January has index 0)
+							parseInt(eid.substr(6, 2)),						//day
+							parseInt(rawTime[0]),							//hour
+							parseInt(rawTime[1]));							//minute
 
-				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
-					currentMatch.homeTeam.abbr = xmlGame.h;
-					currentMatch.homeTeam.score[0] = parseInt(xmlGame.hs);
-					currentMatch.awayTeam.abbr = xmlGame.v;
-					currentMatch.awayTeam.score[0] = parseInt(xmlGame.vs);
+					currentMatch.date = rawDate.getTime();
+
+					if (xmlGame.hs !== "" && xmlGame.vs !== "") {
+						currentMatch.homeTeam.abbr = xmlGame.h;
+						currentMatch.homeTeam.score[0] = parseInt(xmlGame.hs);
+						currentMatch.awayTeam.abbr = xmlGame.v;
+						currentMatch.awayTeam.score[0] = parseInt(xmlGame.vs);
+					}
+
+					if (xmlGame.q === "F") {
+						currentMatch.qtr = "Final";
+						currentMatch.gameClock = "";
+					} else if (xmlGame.q === "FO") {
+						currentMatch.qtr = "Final Overtime";
+						currentMatch.gameClock = "";
+					}
+					
+					gameList[eid] = currentMatch;
 				}
-
-				if (xmlGame.q === "F") {
-					currentMatch.qtr = "Final";
-					currentMatch.gameClock = "";
-				} else if (xmlGame.q === "FO") {
-					currentMatch.qtr = "Final Overtime";
-					currentMatch.gameClock = "";
-				}
-				
-				gameList[eid] = currentMatch;
-				
-				if (weekEids[week] === undefined) weekEids[week] = [];
-				weekEids[week].push(eid);
-			}
+			});
 		});
-	});	
+	}
 }
 function updateGame(eid) {	
 	var path = game_url.replace(/%1/g, eid);
@@ -176,6 +181,13 @@ function updateGame(eid) {
 						break;
 				}					
 			}
+			currentMatch.quarter = rootJSON.qtr;
+			currentMatch.gameClock = rootJSON.clock;
+
+			if (currentMatch.quarter.indexOf("Final") === 0) {
+				currentMatch.over = true;
+			}
+			
 			gameList[eid] = currentMatch;			
 			console.log("UpdateGame: update for", eid, "successfully finished");
 		} catch (e) {

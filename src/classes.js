@@ -1,3 +1,10 @@
+class Week {
+	constructor(index, eids) {
+		this.index = index;
+		this.eids = eids;
+	}
+}
+
 class Match {
 	constructor(eid, date, homeTeam, awayTeam) {
 		this.eid = eid;
@@ -7,7 +14,9 @@ class Match {
 		
 		this.quarter = "";
 		this.gameClock = "";
-		this.drives = [];		
+		this.drives = [];
+
+		this.over = false;
 	}
 }
 class Team {
