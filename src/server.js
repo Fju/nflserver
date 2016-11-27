@@ -1,4 +1,4 @@
-const xml = require("xml2js"), http = require("http"), fs = require("fs"), request = require("request");
+const xml = require("xml2js"), http = require("http"), fs = require("fs"), syncRequest = require("sync-request");
 
 const classes = require("./classes.js");
 const Week = classes.Week, Match = classes.Match, Team = classes.Team, Drive = classes.Drive, Play = classes.Play;
@@ -19,6 +19,8 @@ let server = http.createServer(function (req, res) {
 server.listen(PORT);
 */
 
+
+
 var gameList = {};
 var weekList = [];
 
@@ -30,43 +32,22 @@ function updateCycle() {
 
 	for (eid in gameList) {
 		var currentMatch = gameList[eid];
-		console.log(eid, currentMatch);
-		if (!currentMatch.over) {
-			console.log("UpdateGame: starting update for", eid);
+		if (!currentMatch.over && currentMatch.date + 4 * 60 * 60 * 1000 < currentTime) {
+			console.log("updating");
 			updateGame(eid);
 		}
 	}
-	
 }
 
 function init() {
-	updateSchedule(YEAR);
-	//setInterval(updateCycle, 15000);
+	console.log("Starting nflserver");
+	updateSchedule(YEAR, 1, 17);
+	console.log("Finished downloading schedule");
+	updateCycle();
 }
 init();
 
 
-
-
-function httpRequest(path, callback) {
-	request(path, (err, res, body) => {
-		if (res.statusCode !== 200 || err) return;
-		callback(body);
-	});
-	/*	
-	http.get(path, (res) => {
-		if (res.statusCode != 200) return;
-
-		let rawData = "";
-		res.setEncoding("utf8");
-		res.on("data", (chunk) => {
-			rawData += chunk
-		});
-		res.on("end", () => {
-			callback(rawData);
-		});
-	}); */
-}
 
 function updateSchedule(year, weekStart, weekEnd) {
 	weekStart = weekStart || 1;
@@ -85,113 +66,111 @@ function updateSchedule(year, weekStart, weekEnd) {
 		if (week == 21) week++;
 	
 		var path = schedule_url.replace("%1", year).replace("%2", seasonType).replace("%3", week);
+		var response = syncRequest("GET", path);
 		
-		httpRequest(path, (data) => {
-			xml.parseString(data, (err, result) => {
-				if (typeof(result["ss"]) != "object") return;
+		xml.parseString(response.getBody(), (err, result) => {
+			if (typeof(result["ss"]) != "object") return;
 
-				var rootXML = result["ss"]["gms"][0]["g"];
-			
-				for (var i = 0; i != rootXML.length; i++) {
-					var xmlGame = rootXML[i]["$"], eid = xmlGame.eid;				
+			var rootXML = result["ss"]["gms"][0]["g"];
+		
+			for (var i = 0; i != rootXML.length; i++) {
+				var xmlGame = rootXML[i]["$"], eid = xmlGame.eid;				
 
-					if (!(eid in gameList)) gameList[eid] = new Match(eid, null, new Team(xmlGame.h), new Team(xmlGame.v));
-					var currentMatch = gameList[eid];
-					
-					var rawTime = xmlGame.t.split(":");					 	//time (format hh:mm)
-					
-					var rawDate = new Date(parseInt(eid.substr(0, 4)),		//year
-							parseInt(eid.substr(4, 2)) - 1,					//month (-1 since January has index 0)
-							parseInt(eid.substr(6, 2)),						//day
-							parseInt(rawTime[0]),							//hour
-							parseInt(rawTime[1]));							//minute
+				if (!(eid in gameList)) gameList[eid] = new Match(eid, null, new Team(xmlGame.h), new Team(xmlGame.v));
+				var currentMatch = gameList[eid];
+				
+				var rawTime = xmlGame.t.split(":"); //time (format hh:mm)
+				
+				var rawDate = new Date(parseInt(eid.substr(0, 4)), //year
+						parseInt(eid.substr(4, 2)) - 1, //month (-1 since January has index 0)
+						parseInt(eid.substr(6, 2)), //day
+						parseInt(rawTime[0]), //hour
+						parseInt(rawTime[1])); //minute
 
-					currentMatch.date = rawDate.getTime();
+				currentMatch.date = rawDate.getTime();
 
-					if (xmlGame.hs !== "" && xmlGame.vs !== "") {
-						currentMatch.homeTeam.abbr = xmlGame.h;
-						currentMatch.homeTeam.score[0] = parseInt(xmlGame.hs);
-						currentMatch.awayTeam.abbr = xmlGame.v;
-						currentMatch.awayTeam.score[0] = parseInt(xmlGame.vs);
-					}
-
-					if (xmlGame.q === "F") {
-						currentMatch.qtr = "Final";
-						currentMatch.gameClock = "";
-					} else if (xmlGame.q === "FO") {
-						currentMatch.qtr = "Final Overtime";
-						currentMatch.gameClock = "";
-					}
-					
-					gameList[eid] = currentMatch;
+				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
+					currentMatch.homeTeam.abbr = xmlGame.h;
+					currentMatch.homeTeam.score[0] = parseInt(xmlGame.hs);
+					currentMatch.awayTeam.abbr = xmlGame.v;
+					currentMatch.awayTeam.score[0] = parseInt(xmlGame.vs);
 				}
-			});
+
+				if (xmlGame.q === "F") {
+					currentMatch.qtr = "Final";
+					currentMatch.gameClock = "";
+				} else if (xmlGame.q === "FO") {
+					currentMatch.qtr = "Final Overtime";
+					currentMatch.gameClock = "";
+				}
+				
+				gameList[eid] = currentMatch;
+			}
 		});
 	}
 }
-function updateGame(eid) {	
+function updateGame(eid, callback) {	
 	var path = game_url.replace(/%1/g, eid);
 
-	httpRequest(path, (data) => {	
-		try {
-			var rootJSON = JSON.parse(data)[eid];
+	var response = syncRequest("GET", path);
+
+	try {
+		var rootJSON = JSON.parse(response.getBody())[eid];
+	
+		if (!(eid in gameList)) gameList[eid] = new Match(eid, null, null, null); 
+		var currentMatch = gameList[eid];
 		
-			if (!(eid in gameList)) gameList[eid] = new Match(eid, null, null, null); 
-			var currentMatch = gameList[eid];
-			
-			for (key in rootJSON) {
-				var jsonObj = rootJSON[key];
-				switch (key) {
-					case "home":
-					case "away":
-						var currentTeam = new Team(jsonObj.abbr);
-						var jsonTeamStats = jsonObj["stats"]["team"];
+		for (key in rootJSON) {
+			var jsonObj = rootJSON[key];
+			switch (key) {
+				case "home":
+				case "away":
+					var currentTeam = new Team(jsonObj.abbr);
+					var jsonTeamStats = jsonObj["stats"]["team"];
+					
+					for (qtr in jsonObj["score"]) {
+						var val = parseInt(jsonObj["score"][qtr]);
+						if (qtr == "T") currentTeam.score[0] = val;
+						else currentTeam.score[parseInt(qtr)] = val;
+					}
+					for (stat in jsonTeamStats) {
+						currentTeam.stats[stat] = jsonTeamStats[stat];		
+					}
+					currentTeam.timeouts = jsonObj.to;
+											
+					if (key == "home") currentMatch.homeTeam = currentTeam;
+					else currentMatch.awayTeam = currentTeam;
+					break;
+				case "drives":
+					for (did in jsonObj) {
+						if (did == "crntdrive") continue;
+
+						var jsonDrive = jsonObj[did];
+						var jsonPlays = jsonDrive["plays"];
+						var currentDrive = new Drive(jsonDrive.posteam, jsonDrive.postime, jsonDrive.ydsgained,
+							jsonDrive.penyds, jsonDrive.result, []);
 						
-						for (qtr in jsonObj["score"]) {
-							var val = parseInt(jsonObj["score"][qtr]);
-							if (qtr == "T") currentTeam.score[0] = val;
-							else currentTeam.score[parseInt(qtr)] = val;
+						for (pid in jsonPlays) {
+							var jsonPlay = jsonPlays[pid];
+							var currentPlay = new Play(jsonPlay.qtr, jsonPlay.time, jsonPlay.down, jsonPlay.ydstogo,
+								jsonPlay.yrdln, jsonPlay.desc);
+
+							currentDrive.plays.push(currentPlay);
 						}
-						for (stat in jsonTeamStats) {
-							currentTeam.stats[stat] = jsonTeamStats[stat];		
-						}
-						currentTeam.timeouts = jsonObj.to;
-												
-						if (key == "home") currentMatch.homeTeam = currentTeam;
-						else currentMatch.awayTeam = currentTeam;
-						break;
-					case "drives":
-						for (did in jsonObj) {
-							if (did == "crntdrive") continue;
-
-							var jsonDrive = jsonObj[did];
-							var jsonPlays = jsonDrive["plays"];
-							var currentDrive = new Drive(jsonDrive.posteam, jsonDrive.postime, jsonDrive.ydsgained,
-								jsonDrive.penyds, jsonDrive.result, []);
-							
-							for (pid in jsonPlays) {
-								var jsonPlay = jsonPlays[pid];
-								var currentPlay = new Play(jsonPlay.qtr, jsonPlay.time, jsonPlay.down, jsonPlay.ydstogo,
-									jsonPlay.yrdln, jsonPlay.desc);
-
-								currentDrive.plays.push(currentPlay);
-							}
-							currentMatch.drives.push(currentDrive);
-						}						
-						break;
-				}					
-			}
-			currentMatch.quarter = rootJSON.qtr;
-			currentMatch.gameClock = rootJSON.clock;
-
-			if (currentMatch.quarter.indexOf("Final") === 0) {
-				currentMatch.over = true;
-			}
-			
-			gameList[eid] = currentMatch;			
-			console.log("UpdateGame: update for", eid, "successfully finished");
-		} catch (e) {
-			console.log(e);
+						currentMatch.drives.push(currentDrive);
+					}						
+					break;
+			}					
 		}
-	});
+		currentMatch.quarter = rootJSON.qtr;
+		currentMatch.gameClock = rootJSON.clock;
+
+		if (currentMatch.quarter.indexOf("Final") === 0) {
+			currentMatch.over = true;
+		}
+		
+		gameList[eid] = currentMatch;
+	} catch (e) {
+		console.log(e);
+	}
 }

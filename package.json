@@ -4,8 +4,9 @@
   "description": "An nodejs application to host an HTTP-Server that is able to return information about NFL matches and schedule. It uses data from nfl.com files and optimizes them.",
   "main": "src/server.js",
   "dependencies": {
+    "request": "^2.79.0",
+    "sync-request": "^3.0.1",
     "xml2js": "^0.4.17"
-	"request": "^2.79.0"
   },
   "devDependencies": {},
   "scripts": {
@@ -16,7 +17,11 @@
     "url": "git+https://github.com/Fju/nflserver.git"
   },
   "keywords": [
-    "NFL", "NodeJS", "JavaScript", "http", "server"
+    "NFL",
+    "NodeJS",
+    "JavaScript",
+    "http",
+    "server"
   ],
   "author": "Fju",
   "license": "GPL-3.0",
