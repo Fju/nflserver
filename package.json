@@ -5,6 +5,7 @@
   "main": "src/server.js",
   "dependencies": {
     "xml2js": "^0.4.17"
+	"request": "^2.79.0"
   },
   "devDependencies": {},
   "scripts": {
