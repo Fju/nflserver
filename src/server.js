@@ -8,16 +8,14 @@ const game_url = "http://www.nfl.com/liveupdate/game-center/%1/%1_gtd.json";
 
 const YEAR = 2016;
 
-/* 
+ 
 const PORT = 5124;
 
 let server = http.createServer(function (req, res) {
-	console.log(req.headers);
-	
-	
+	//TODO: read headers and respond	
 });
 server.listen(PORT);
-*/
+
 
 
 
@@ -34,7 +32,7 @@ function updateCycle() {
 		var currentMatch = gameList[eid];
 		if (!currentMatch.over && currentMatch.date + 4 * 60 * 60 * 1000 < currentTime) {
 			console.log("updating");
-			updateGame(eid);
+			updateGame(eid);			
 		}
 	}
 }
@@ -119,6 +117,7 @@ function updateGame(eid, callback) {
 	
 		if (!(eid in gameList)) gameList[eid] = new Match(eid, null, null, null); 
 		var currentMatch = gameList[eid];
+		var updateKey = ++currentMatch.updateKey;
 		
 		for (key in rootJSON) {
 			var jsonObj = rootJSON[key];
@@ -134,7 +133,7 @@ function updateGame(eid, callback) {
 						else currentTeam.score[parseInt(qtr)] = val;
 					}
 					for (stat in jsonTeamStats) {
-						currentTeam.stats[stat] = jsonTeamStats[stat];		
+						currentTeam.stats[stat] = jsonTeamStats[stat];
 					}
 					currentTeam.timeouts = jsonObj.to;
 											
@@ -142,23 +141,33 @@ function updateGame(eid, callback) {
 					else currentMatch.awayTeam = currentTeam;
 					break;
 				case "drives":
+					var currentDrives = currentMatch.drives;
 					for (did in jsonObj) {
-						if (did == "crntdrive") continue;
-
+						if (did == "crntdrv") continue;
+						
 						var jsonDrive = jsonObj[did];
 						var jsonPlays = jsonDrive["plays"];
-						var currentDrive = new Drive(jsonDrive.posteam, jsonDrive.postime, jsonDrive.ydsgained,
-							jsonDrive.penyds, jsonDrive.result, []);
+						var currentDrive = new Drive(did, jsonDrive.posteam, jsonDrive.postime, jsonDrive.ydsgained,
+							jsonDrive.penyds, jsonDrive.result);
 						
+						var updated = false;
 						for (pid in jsonPlays) {
 							var jsonPlay = jsonPlays[pid];
-							var currentPlay = new Play(jsonPlay.qtr, jsonPlay.time, jsonPlay.down, jsonPlay.ydstogo,
+							var currentPlay = new Play(pid, jsonPlay.qtr, jsonPlay.time, jsonPlay.down, jsonPlay.ydstogo,
 								jsonPlay.yrdln, jsonPlay.desc);
 
-							currentDrive.plays.push(currentPlay);
+							if (pid in currentDrive.plays) continue;
+
+							currentPlay.updateKey = updateKey;
+							currentDrive.plays[pid] = currentPlay;
+							updated = true;
 						}
-						currentMatch.drives.push(currentDrive);
-					}						
+						
+						if (updated || !(did in currentMatch.drives)) {
+							currentDrive.updateKey = updateKey;
+							currentMatch.drives[did] = currentDrive;
+						}					
+					}									
 					break;
 			}					
 		}
@@ -168,7 +177,8 @@ function updateGame(eid, callback) {
 		if (currentMatch.quarter.indexOf("Final") === 0) {
 			currentMatch.over = true;
 		}
-		
+
+		currentMatch.updateID++;		
 		gameList[eid] = currentMatch;
 	} catch (e) {
 		console.log(e);
