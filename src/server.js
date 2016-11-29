@@ -12,7 +12,20 @@ const YEAR = 2016;
 const PORT = 5124;
 
 let server = http.createServer(function (req, res) {
-	//TODO: read headers and respond	
+	try {
+		var updateKey = parseInt(req.headers.updateKey || "0"),
+			state = parseInt(req.headers.state || "0"),
+			eid = req.headers.eid || "";
+		
+		var data = "";
+		if (eid in gameList) {
+			data = gameList[eid].getJSON(state, updateKey);
+			res.statusCode = 200;
+		} else res.statusCode = 404;
+		res.end(data);
+	} catch (e) {
+		console.log(e);
+	}
 });
 server.listen(PORT);
 
@@ -43,7 +56,7 @@ function init() {
 	console.log("Finished downloading schedule");
 	updateCycle();
 }
-init();
+//init();
 
 
 
