@@ -1,20 +1,7 @@
-/*
- *  Syntax of `state`
- *  [ 0 ]   [ 1 ]   [ 0 ]   [ 1 ]  =  5
- *  stats   score   drives   misc
- *
- *  0: disabled    1: enabled
- */
-
-class Week {
-	constructor(index, eids) {
-		this.index = index;
-		this.eids = eids;
-	}
-}
 class Match {
-	constructor(eid, date, homeTeam, awayTeam) {
+	constructor(eid, week, date, homeTeam, awayTeam) {
 		this.eid = eid;
+		this.week = week;
 		this.date = date;
 		this.homeTeam = homeTeam;
 		this.awayTeam = awayTeam;
@@ -26,15 +13,14 @@ class Match {
 		this.over = false;
 		this.updateKey = 0;
 	}
-	getJSON(state, updateKey) {
+	getJSON(params, updateKey) {
 		var obj = {eid: this.eid};
 		
 		obj.upk = this.updateKey;
-		obj.homeTeam = this.homeTeam.getJSON(state); //stats enabled
-		obj.awayTeam = this.awayTeam.getJSON(state);
-		
-		if (state & 2) {
-			//drives enabled
+		obj.homeTeam = this.homeTeam.getJSON(params);
+		obj.awayTeam = this.awayTeam.getJSON(params);
+	
+		if (params.drives) {
 			obj.drives = [];
 			for (var d in this.drives) {
 				var currentDrive = this.drives[d];
@@ -44,14 +30,13 @@ class Match {
 			}			
 		}
 
-		if (state & 1) {
-			//misc enabled
-			obj.date = this.date;
+		if (params.misc) {
+			obj.date = this.date / 1000;
 			obj.qtr = this.quarter;
 			obj.clock = this.gameClock;
 		}
 
-		return JSON.stringify(obj);
+		return obj;
 	}
 }
 class Team {
@@ -62,13 +47,11 @@ class Team {
 		this.timeouts;
 		this.stats = {};		
 	}
-	getJSON(state) {
-		var obj = {abbr: this.abbr};
+	getJSON(params) {
+		var obj = {abbr: this.abbr, score: this.score};
 
 		if (this.timeouts) obj.to = this.timeouts;
-
-		if (state & 4) obj.score = this.score;
-		if (state & 8) obj.stats = this.stats;
+		if (params.stats) obj.stats = this.stats;
 		return obj;
 	}
 }

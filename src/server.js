@@ -8,23 +8,53 @@ const game_url = "http://www.nfl.com/liveupdate/game-center/%1/%1_gtd.json";
 
 const YEAR = 2016;
 
- 
-const PORT = 5124;
 
+const PORT = 5124;
 let server = http.createServer(function (req, res) {
+	console.log(req.headers);
 	try {
-		var updateKey = parseInt(req.headers.updateKey || "0"),
-			state = parseInt(req.headers.state || "0"),
-			eid = req.headers.eid || "";
-		
-		var data = "";
-		if (eid in gameList) {
-			data = gameList[eid].getJSON(state, updateKey);
-			res.statusCode = 200;
-		} else res.statusCode = 404;
+		const reqType = req.headers["req-type"];
+		var data = "{}";
+		switch (reqType) {
+			case "Schedule":
+				var obj = {currentWeek: currentWeek};
+				
+				var weekStart = req.headers["week-start"] || "0",
+					weekEnd = req.headers["week-end"] || "0",
+					weekCurrent = req.headers["current-week"];
+
+				weekStart = parseInt(weekStart);
+				weekEnd = parseInt(weekEnd);				
+
+				for (var eid in gameList) {
+					var currentMatch = gameList[eid];
+					var w = currentMatch.week;
+					if ((weekCurrent && w === currentWeek) || (w >= weekStart && w <= weekEnd)) {
+						if (!(w in obj)) obj[w] = [];
+						obj[w].push(currentMatch.getJSON({misc: true}, 0));
+					}
+				}
+				data = JSON.stringify(obj);
+				break;
+			case "Game":
+				var obj = {};
+				var eid = req.headers["eid"] || "",
+					updateKey = req.headers["update-key"] || 0;
+				
+				if (eid in gameList) {
+					obj = gameList[eid].getJSON({drives: true, stats: true}, updateKey);
+				}
+				data = JSON.stringify(obj);				
+				break;
+			default:
+				throw new Error("No request type!");
+		}
+
+		res.statusCode = 200;
 		res.end(data);
 	} catch (e) {
-		console.log(e);
+		res.statusCode = 404;
+		res.end(e.message);
 	}
 });
 server.listen(PORT);
@@ -36,31 +66,39 @@ var gameList = {};
 var weekList = [];
 
 
+var currentWeek = 0;
 var lastUpdate = 0;
 
 function updateCycle() {
 	const currentTime = Date.now();
 
+	if (currentTime - lastUpdate > 1000 * 60 * 60 * 6) {
+		lastUpdate = currentTime;
+		updateSchedule(YEAR, currentWeek, currentWeek + 1);
+	}
 	for (eid in gameList) {
 		var currentMatch = gameList[eid];
 		if (!currentMatch.over && currentMatch.date + 4 * 60 * 60 * 1000 < currentTime) {
-			console.log("updating");
-			updateGame(eid);			
+			updateGame(eid);
 		}
 	}
+	console.log("Finished updating games");
 }
 
 function init() {
+	var time = Date.now();
 	console.log("Starting nflserver");
-	updateSchedule(YEAR, 1, 17);
+	updateSchedule(YEAR, 1, 26);
 	console.log("Finished downloading schedule");
-	updateCycle();
+	//updateCycle();
+	//console.log("Elapsed time:", (Date.now() - time) / 1000);
 }
-//init();
-
-
+init();
 
 function updateSchedule(year, weekStart, weekEnd) {
+	const currentTime = Date.now();
+	var w = 26;
+	
 	weekStart = weekStart || 1;
 	weekEnd = weekEnd || 26;
 	//0 - 3: Preseason Week 1 - Week 4
@@ -83,11 +121,11 @@ function updateSchedule(year, weekStart, weekEnd) {
 			if (typeof(result["ss"]) != "object") return;
 
 			var rootXML = result["ss"]["gms"][0]["g"];
-		
+
 			for (var i = 0; i != rootXML.length; i++) {
 				var xmlGame = rootXML[i]["$"], eid = xmlGame.eid;				
 
-				if (!(eid in gameList)) gameList[eid] = new Match(eid, null, new Team(xmlGame.h), new Team(xmlGame.v));
+				if (!(eid in gameList)) gameList[eid] = new Match(eid, week, null, new Team(xmlGame.h), new Team(xmlGame.v));
 				var currentMatch = gameList[eid];
 				
 				var rawTime = xmlGame.t.split(":"); //time (format hh:mm)
@@ -99,6 +137,9 @@ function updateSchedule(year, weekStart, weekEnd) {
 						parseInt(rawTime[1])); //minute
 
 				currentMatch.date = rawDate.getTime();
+				currentMatch.week = week;
+				
+				if (currentMatch.date > currentTime && week < w) w = week;
 
 				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
 					currentMatch.homeTeam.abbr = xmlGame.h;
@@ -117,8 +158,11 @@ function updateSchedule(year, weekStart, weekEnd) {
 				
 				gameList[eid] = currentMatch;
 			}
+			
 		});
 	}
+	currentWeek = w;
+	
 }
 function updateGame(eid, callback) {	
 	var path = game_url.replace(/%1/g, eid);
