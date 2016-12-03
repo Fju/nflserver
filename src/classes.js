@@ -15,10 +15,12 @@ class Match {
 	}
 	getJSON(params, updateKey) {
 		var obj = {eid: this.eid};
-		
+
+		obj.date = this.date / 1000;
+		obj.week = this.week;
 		obj.upk = this.updateKey;
-		obj.homeTeam = this.homeTeam.getJSON(params);
-		obj.awayTeam = this.awayTeam.getJSON(params);
+		obj.home = this.homeTeam.getJSON(params);
+		obj.away = this.awayTeam.getJSON(params);
 	
 		if (params.drives) {
 			obj.drives = [];
@@ -30,12 +32,9 @@ class Match {
 			}			
 		}
 
-		if (params.misc) {
-			obj.date = this.date / 1000;
-			obj.qtr = this.quarter;
-			obj.clock = this.gameClock;
-		}
-
+		obj.qtr = this.quarter;
+		obj.clock = this.gameClock;
+		
 		return obj;
 	}
 }

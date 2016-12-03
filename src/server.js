@@ -21,35 +21,38 @@ let server = http.createServer(function (req, res) {
 				
 				var weekStart = req.headers["week-start"] || "0",
 					weekEnd = req.headers["week-end"] || "0",
-					weekCurrent = req.headers["current-week"];
+					
 
 				weekStart = parseInt(weekStart);
-				weekEnd = parseInt(weekEnd);				
+				weekEnd = parseInt(weekEnd);
+				
+				var currentWeekOnly = (weekStart === 0 && weekEnd === 0);		
 
 				for (var eid in gameList) {
 					var currentMatch = gameList[eid];
 					var w = currentMatch.week;
-					if ((weekCurrent && w === currentWeek) || (w >= weekStart && w <= weekEnd)) {
-						if (!(w in obj)) obj[w] = [];
-						obj[w].push(currentMatch.getJSON({misc: true}, 0));
+					if ((currentWeekOnly && w === currentWeek) || (w >= weekStart && w <= weekEnd)) {
+						obj[currentMatch.eid] = currentMatch.getJSON({}, 0);
 					}
 				}
 				data = JSON.stringify(obj);
+				
 				break;
 			case "Game":
+			
 				var obj = {};
 				var eid = req.headers["eid"] || "",
 					updateKey = req.headers["update-key"] || 0;
 				
 				if (eid in gameList) {
-					obj = gameList[eid].getJSON({drives: true, stats: true}, updateKey);
+					obj[eid] = gameList[eid].getJSON({drives: true, stats: true}, updateKey);
 				}
 				data = JSON.stringify(obj);				
 				break;
 			default:
 				throw new Error("No request type!");
 		}
-
+		console.log(data);
 		res.statusCode = 200;
 		res.end(data);
 	} catch (e) {
@@ -122,10 +125,10 @@ function updateSchedule(year, weekStart, weekEnd) {
 
 			var rootXML = result["ss"]["gms"][0]["g"];
 
-			for (var i = 0; i != rootXML.length; i++) {
-				var xmlGame = rootXML[i]["$"], eid = xmlGame.eid;				
+			for (var j = 0; j != rootXML.length; j++) {
+				var xmlGame = rootXML[j]["$"], eid = xmlGame.eid;				
 
-				if (!(eid in gameList)) gameList[eid] = new Match(eid, week, null, new Team(xmlGame.h), new Team(xmlGame.v));
+				if (!(eid in gameList)) gameList[eid] = new Match(eid, i, null, new Team(xmlGame.h), new Team(xmlGame.v));
 				var currentMatch = gameList[eid];
 				
 				var rawTime = xmlGame.t.split(":"); //time (format hh:mm)
@@ -137,9 +140,9 @@ function updateSchedule(year, weekStart, weekEnd) {
 						parseInt(rawTime[1])); //minute
 
 				currentMatch.date = rawDate.getTime();
-				currentMatch.week = week;
+				currentMatch.week = i;
 				
-				if (currentMatch.date > currentTime && week < w) w = week;
+				if (currentMatch.date > currentTime && i < w) w = i;
 
 				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
 					currentMatch.homeTeam.abbr = xmlGame.h;
@@ -149,10 +152,10 @@ function updateSchedule(year, weekStart, weekEnd) {
 				}
 
 				if (xmlGame.q === "F") {
-					currentMatch.qtr = "Final";
+					currentMatch.quarter = "Final";
 					currentMatch.gameClock = "";
 				} else if (xmlGame.q === "FO") {
-					currentMatch.qtr = "Final Overtime";
+					currentMatch.quarter = "Final Overtime";
 					currentMatch.gameClock = "";
 				}
 				
