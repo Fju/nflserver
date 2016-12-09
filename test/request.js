@@ -4,9 +4,9 @@ var options = {
 	port: 5124,
 	method: "GET",
 	headers: {
-		"req-type": "Schedule",
-		"week-start": 1,
-		"week-end": 4
+		"req-type": "Game",
+		"eid": "2016120400",
+		"update-key": 17
 	}};
 
 

@@ -11,6 +11,7 @@ class Match {
 		this.drives = {};
 
 		this.over = false;
+		this.crntdrv = null;
 		this.updateKey = 0;
 	}
 	getJSON(params, updateKey) {
@@ -31,6 +32,8 @@ class Match {
 				}
 			}			
 		}
+
+		if (this.crntdrv !== null) obj.crntdrv = this.crntdrv;
 
 		obj.qtr = this.quarter;
 		obj.clock = this.gameClock;
