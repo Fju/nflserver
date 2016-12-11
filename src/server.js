@@ -38,7 +38,7 @@ let server = http.createServer(function (req, res) {
 			case "Game":
 				var obj = {};
 				var eid = req.headers["eid"] || "",
-					updateKey = req.headers["update-key"] || 0;
+					updateKey = req.headers["update-key"] || "0";
 			
 				updateKey = parseInt(updateKey);
 
@@ -56,6 +56,7 @@ let server = http.createServer(function (req, res) {
 	} catch (e) {
 		res.statusCode = 404;
 		res.end(e.message);
+		console.log(e);
 	}
 });
 
@@ -76,7 +77,7 @@ function updateCycle() {
 
 	if (currentTime - lastUpdate > 1000 * 60 * 60 * 6) {
 		lastUpdate = currentTime;
-		updateSchedule(YEAR, currentWeek, 26);
+		updateSchedule(YEAR, currentWeek, 20);
 	}
 	for (eid in gameList) {
 		var currentMatch = gameList[eid];
@@ -84,6 +85,12 @@ function updateCycle() {
 			updateGame(eid);			
 		}
 	}
+	fs.writeFile("./data.log", JSON.stringify(gameList), function(err) {
+		if (err) {
+			return console.log(err);
+		}
+		console.log("File saved");
+	}); 
 	console.log("Finished updating games");
 	setTimeout(function() {
 		updateCycle();
@@ -161,7 +168,7 @@ function updateSchedule(year, weekStart, weekEnd) {
 	currentWeek = w;
 	
 }
-function updateGame(eid, callback) {	
+function updateGame(eid) {	
 	var path = game_url.replace(/%1/g, eid);
 	var response = syncRequest("GET", path);
 	try {
@@ -172,12 +179,13 @@ function updateGame(eid, callback) {
 		var currentMatch = gameList[eid];
 			
 
-		var updateKey = rootJSON["nextupdate"];
+		const updateKey = rootJSON["nextupdate"];
 		if (updateKey === currentMatch.updateKey) return;
 
 		currentMatch.updateKey = updateKey;		
 		rootJSON = rootJSON[eid];
-
+		
+		var currentDriveId;
 		for (key in rootJSON) {
 			var jsonObj = rootJSON[key];
 			switch (key) {
@@ -201,9 +209,12 @@ function updateGame(eid, callback) {
 					break;
 				case "drives":
 					var currentDrives = currentMatch.drives;
-					var currentDriveId;
+					
 					for (did in jsonObj) {
-						if (did == "crntdrv") currentDriveId = jsonObj["crntdrv"];
+						if (did == "crntdrv") {
+							currentDriveId = jsonObj["crntdrv"];
+							continue;
+						}
 						
 						var jsonDrive = jsonObj[did];
 						var jsonPlays = jsonDrive["plays"];
@@ -232,13 +243,15 @@ function updateGame(eid, callback) {
 					break;
 			}					
 		}
-		currentMatch.quarter = rootJSON.qtr;
+		
+		currentMatch.quarter = (rootJSON.qtr !== "final overtime") ? rootJSON.qtr : "Final OT";
 		currentMatch.gameClock = rootJSON.clock;
 
 		if (currentMatch.quarter.indexOf("Final") === 0) {
 			currentMatch.over = true;
 		}
-		if (!currentMatch.over) {
+
+		if (!currentMatch.over && currentDriveId !== 0) {			
 			var cd = currentMatch.drives[currentDriveId];
 			var maxPlay = 0;
 			for (var p in cd.plays) {
@@ -255,7 +268,6 @@ function updateGame(eid, callback) {
 				yrdln: cp.yrdln,
 				desc: cp.description				
 			};
-			console.log(currentMatch.crntdrv);
 		} else currentMatch.crntdrv = null;
 
 		gameList[eid] = currentMatch;

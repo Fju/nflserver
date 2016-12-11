@@ -70,7 +70,7 @@ class Drive {
 		this.updateKey = 0;
 	}
 	getJSON(updateKey) {
-		var obj = {postime: this.posteam, postime: this.postime, ydsgained: this.ydsgained, penyds: this.penyds, result: this.result};
+		var obj = {posteam: this.posteam, postime: this.postime, ydsgained: this.ydsgained, penyds: this.penyds, result: this.result};
 
 		obj.plays = [];	
 		for (var p in this.plays) {
