@@ -1,3 +1,4 @@
+"use strict";
 class Match {
 	constructor(eid, week, date, homeTeam, awayTeam) {
 		this.eid = eid;
@@ -9,6 +10,7 @@ class Match {
 		this.quarter = "";
 		this.gameClock = "";
 		this.drives = {};
+		this.scoringPlays = {};
 
 		this.over = false;
 		this.crntdrv = null;
@@ -17,12 +19,25 @@ class Match {
 	getJSON(params, updateKey) {
 		var obj = {eid: this.eid};
 
-		obj.date = this.date / 1000;
-		obj.week = this.week;
-		obj.upk = this.updateKey;
-		obj.home = this.homeTeam.getJSON(params);
-		obj.away = this.awayTeam.getJSON(params);
-	
+		if (params.scoreOnly) {
+			obj.homeScore = this.homeTeam.score[0];
+			obj.awayScore = this.awayTeam.score[0];
+			obj.scrplays = [];
+			for (var sp in this.scoringPlays) {
+				var currentScoringPlay = this.scoringPlays[sp];
+				if (currentScoringPlay.updateKey > updateKey) {
+					obj.scrplays.push(currentScoringPlay.getJSON());
+				}
+			}
+		} else {
+			obj.date = this.date / 1000;
+			obj.week = this.week;
+			obj.home = this.homeTeam.getJSON(params);
+			obj.away = this.awayTeam.getJSON(params);
+
+			obj.qtr = this.quarter;
+			obj.clock = this.gameClock;
+		}	
 		if (params.drives) {
 			obj.drives = [];
 			for (var d in this.drives) {
@@ -32,11 +47,9 @@ class Match {
 				}
 			}			
 		}
+		if (this.crntdrv !== null && params.crntdrv) obj.crntdrv = this.crntdrv;
 
-		if (this.crntdrv !== null) obj.crntdrv = this.crntdrv;
-
-		obj.qtr = this.quarter;
-		obj.clock = this.gameClock;
+		obj.upk = this.updateKey;
 		
 		return obj;
 	}
@@ -80,6 +93,18 @@ class Drive {
 			}
 		}
 		return obj;		
+	}
+}
+class ScoringPlay {
+	constructor(type, team, desc, updateKey) {
+		this.type = type;
+		this.team = team;
+		this.description = desc;
+		this.updateKey = updateKey;
+	}
+	getJSON() {
+		var obj = {type: this.type, team: this.team, desc: this.description};
+		return obj;
 	}
 }
 class Play {

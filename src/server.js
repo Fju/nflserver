@@ -1,3 +1,4 @@
+"use strict";
 const xml = require("xml2js"), http = require("http"), fs = require("fs"), syncRequest = require("sync-request");
 
 const classes = require("./classes.js");
@@ -30,7 +31,7 @@ let server = http.createServer(function (req, res) {
 					var currentMatch = gameList[eid];
 					var w = currentMatch.week;
 					if ((currentWeekOnly && w === currentWeek) || (w >= weekStart && w <= weekEnd)) {
-						obj[currentMatch.eid] = currentMatch.getJSON({}, 0);
+						obj[currentMatch.eid] = currentMatch.getJSON({crntdrv: true}, 0);
 					}
 				}
 				data = JSON.stringify(obj);				
@@ -43,13 +44,27 @@ let server = http.createServer(function (req, res) {
 				updateKey = parseInt(updateKey);
 
 				if (eid in gameList) {
-					obj[eid] = gameList[eid].getJSON({drives: true, stats: true}, updateKey);
+					obj[eid] = gameList[eid].getJSON({drives: true, stats: true, crntdrv: true}, updateKey);
 				}
 				data = JSON.stringify(obj);				
+				break;
+			case "Score":
+				var obj = {};
+				var eid = req.headers["eid"] || "",
+					updateKey = req.headers["update-key"] || "0";
+				
+				updateKey = parseInt(updateKey);
+				
+				if (eid in gameList) {
+					obj[eid] = gameList[eid].getJSON({scoreOnly: true}, updateKey);
+				}	
+				data = JSON.stringify(obj);
 				break;
 			default:
 				throw new Error("No request type!");
 		}
+
+		if (data === "{}") throw new Error("No data");
 		console.log(data);
 		res.statusCode = 200;
 		res.end(data);
@@ -77,7 +92,7 @@ function updateCycle() {
 
 	if (currentTime - lastUpdate > 1000 * 60 * 60 * 6) {
 		lastUpdate = currentTime;
-		updateSchedule(YEAR, currentWeek, 20);
+		updateSchedule(YEAR, currentWeek, 26);
 	}
 	for (eid in gameList) {
 		var currentMatch = gameList[eid];
@@ -209,7 +224,6 @@ function updateGame(eid) {
 					break;
 				case "drives":
 					var currentDrives = currentMatch.drives;
-					
 					for (did in jsonObj) {
 						if (did == "crntdrv") {
 							currentDriveId = jsonObj["crntdrv"];
@@ -220,7 +234,8 @@ function updateGame(eid) {
 						var jsonPlays = jsonDrive["plays"];
 						var currentDrive = new Drive(did, jsonDrive.posteam, jsonDrive.postime, jsonDrive.ydsgained,
 							jsonDrive.penyds, jsonDrive.result);
-						
+
+												
 						var updated = false;
 						for (pid in jsonPlays) {
 							var jsonPlay = jsonPlays[pid];
@@ -229,17 +244,26 @@ function updateGame(eid) {
 
 							if (pid in currentDrive.plays) continue;
 
-							currentPlay.updateKey = updateKey;
+							currentPlay.updateKey = updateKey;							
 							currentDrive.plays[pid] = currentPlay;
-							updated = true;
+							updated = true;							
 						}
 						
 						if (updated || !(did in currentMatch.drives)) {
 							currentDrive.updateKey = updateKey;
 							currentMatch.drives[did] = currentDrive;
 						}					
+					}				
+					break;
+				case "scrsummary":
+					var currentScoringPlays = currentMatch.scoringPlays;
+					for (spid in jsonObj) {
+						if (spid in currentScoringPlays) continue;
+
+						var jsonSp = jsonObj[spid];
+						currentScoringPlays[spid] = new ScoringPlay(jsonSp.type, jsonSp.team, jsonSp.desc, updateKey);
 					}
-				
+					currentMatch.scoringPlays = currentScoringPlays;					
 					break;
 			}					
 		}
