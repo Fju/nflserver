@@ -1,4 +1,3 @@
-"use strict";
 class Match {
 	constructor(eid, week, date, homeTeam, awayTeam) {
 		this.eid = eid;
@@ -15,6 +14,29 @@ class Match {
 		this.over = false;
 		this.crntdrv = null;
 		this.updateKey = 0;
+	}
+	fromJSON(json) {
+		this.eid = json.eid;
+		this.week = json.week;
+		this.date = json.date;
+		this.quarter = json.quarter;
+		this.gameClock = json.gameClock;
+		this.over = json.over;
+		this.crntdrv = json.crntdrv;
+		this.updateKey = json.updateKey;
+
+		this.homeTeam = new Team().fromJSON(json.homeTeam);
+		this.awayTeam = new Team().fromJSON(json.awayTeam);
+		
+		for (var id in json.drives) {
+			var jsonDrive = json.drives[id];
+			this.drives[id] = new Drive().fromJSON(jsonDrive);
+		}		
+		for (var id in json.scoringPlays) {
+			var jsonScoringPlays = json.scoringPlays[id];
+			this.scoringPlays[id] = new ScoringPlay().fromJSON(jsonScoringPlays);
+		}
+		return this;	
 	}
 	getJSON(params, updateKey) {
 		var obj = {eid: this.eid};
@@ -45,11 +67,10 @@ class Match {
 				if (currentDrive.updateKey > updateKey) {
 					obj.drives.push(currentDrive.getJSON(updateKey));
 				}
-			}			
+			}
+			obj.upk = this.updateKey;		
 		}
 		if (this.crntdrv !== null && params.crntdrv) obj.crntdrv = this.crntdrv;
-
-		obj.upk = this.updateKey;
 		
 		return obj;
 	}
@@ -61,6 +82,14 @@ class Team {
 		
 		this.timeouts;
 		this.stats = {};		
+	}
+	fromJSON(json) {
+		this.abbr = json.abbr;
+		this.score = json.score;
+		this.timeouts = json.timeouts;
+		this.stats = json.stats;
+
+		return this;
 	}
 	getJSON(params) {
 		var obj = {abbr: this.abbr, score: this.score};
@@ -82,6 +111,21 @@ class Drive {
 		
 		this.updateKey = 0;
 	}
+	fromJSON(json) {
+		this.id = json.id;
+		this.posteam = json.posteam;
+		this.postime = json.postime;
+		this.ydsgained = json.ydsgained;
+		this.penyds = json.penyds;
+		this.result = json.result;
+		this.updateKey = json.updateKey;
+		
+		for (var id in json.plays) {
+			var jsonPlay = json.plays[id];
+			this.plays[id] = new Play().fromJSON(jsonPlay);
+		}
+		return this;
+	}
 	getJSON(updateKey) {
 		var obj = {posteam: this.posteam, postime: this.postime, ydsgained: this.ydsgained, penyds: this.penyds, result: this.result};
 
@@ -102,6 +146,14 @@ class ScoringPlay {
 		this.description = desc;
 		this.updateKey = updateKey;
 	}
+	fromJSON(json) {
+		this.type = json.type;
+		this.team = json.team;
+		this.description = json.description;
+		this.updateKey = json.updateKey;
+
+		return this;
+	}
 	getJSON() {
 		var obj = {type: this.type, team: this.team, desc: this.description};
 		return obj;
@@ -119,6 +171,18 @@ class Play {
 		
 		this.updateKey = 0;
 	}
+	fromJSON(json) {
+		this.id = json.id;
+		this.qtr = json.qtr;
+		this.time = json.time;
+		this.down = json.down;
+		this.ydstogo = json.ydstogo;
+		this.yrdln = json.yrdln;
+		this.description = json.description;
+		this.updateKey = json.updateKey;
+
+		return this;
+	}
 	getJSON() {
 		var obj = {qtr: this.qtr, time: this.time, down: this.down, ydstogo: this.ydstogo, yrdln: this.yrdln, desc: this.description};
 		return obj;
@@ -129,5 +193,7 @@ module.exports = {
 	Match: Match,
 	Team: Team,
 	Drive: Drive,
-	Play: Play
-}
+	Play: Play,
+	ScoringPlay: ScoringPlay
+};
+

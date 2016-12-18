@@ -1,16 +1,17 @@
-"use strict";
-const xml = require("xml2js"), http = require("http"), fs = require("fs"), syncRequest = require("sync-request");
+const http = require("http"),
+	fs = require("fs");
 
-const classes = require("./classes.js");
-const Week = classes.Week, Match = classes.Match, Team = classes.Team, Drive = classes.Drive, Play = classes.Play;
-
-const schedule_url = "http://www.nfl.com/ajax/scorestrip?season=%1&seasonType=%2&week=%3";
-const game_url = "http://www.nfl.com/liveupdate/game-center/%1/%1_gtd.json";
+const Parser = require("./parser.js");
+const NFL = require("./nfl.js");
+const Logging = require("./logging.js");
 
 const YEAR = 2016;
-
-
 const PORT = 5124;
+const UPDATE_TIME = 5; //5 seconds
+
+var lastUpdate = 0;
+
+
 let server = http.createServer(function (req, res) {
 	console.log(req.headers);
 	try {
@@ -18,7 +19,7 @@ let server = http.createServer(function (req, res) {
 		var data = "{}";
 		switch (reqType) {
 			case "Schedule":
-				var obj = {currentWeek: currentWeek};
+				var obj = {currentWeek: Parser.currentWeek};
 				
 				var weekStart = req.headers["week-start"] || "0",
 					weekEnd = req.headers["week-end"] || "0";					
@@ -27,8 +28,8 @@ let server = http.createServer(function (req, res) {
 				weekEnd = parseInt(weekEnd);
 				
 				var currentWeekOnly = (weekStart === 0 && weekEnd === 0);
-				for (var eid in gameList) {
-					var currentMatch = gameList[eid];
+				for (var eid in Parser.gameList) {
+					var currentMatch = Parser.gameList[eid];
 					var w = currentMatch.week;
 					if ((currentWeekOnly && w === currentWeek) || (w >= weekStart && w <= weekEnd)) {
 						obj[currentMatch.eid] = currentMatch.getJSON({crntdrv: true}, 0);
@@ -43,8 +44,8 @@ let server = http.createServer(function (req, res) {
 			
 				updateKey = parseInt(updateKey);
 
-				if (eid in gameList) {
-					obj[eid] = gameList[eid].getJSON({drives: true, stats: true, crntdrv: true}, updateKey);
+				if (eid in Parser.gameList) {
+					obj[eid] = Parser.gameList[eid].getJSON({drives: true, stats: true, crntdrv: true}, updateKey);
 				}
 				data = JSON.stringify(obj);				
 				break;
@@ -55,8 +56,8 @@ let server = http.createServer(function (req, res) {
 				
 				updateKey = parseInt(updateKey);
 				
-				if (eid in gameList) {
-					obj[eid] = gameList[eid].getJSON({scoreOnly: true}, updateKey);
+				if (eid in Parser.gameList) {
+					obj[eid] = Parser.gameList[eid].getJSON({scoreOnly: true}, updateKey);
 				}	
 				data = JSON.stringify(obj);
 				break;
@@ -75,227 +76,71 @@ let server = http.createServer(function (req, res) {
 	}
 });
 
-function init() {
-	updateCycle();
-	server.listen(PORT);
+function readDatabase() {
+	Logging.log(Logging.INFO, "Reading database");
+	if (!fs.existsSync("./database")) {
+		Logging.log(Logging.WARN, "Couldn't find database file!");	
+		return;
+	}
+	var result = fs.readFileSync("./database", "utf-8");
+	var json = JSON.parse(result);
+	try {
+		lastUpdate = json.lastUpdate || 0;
+		if (typeof lastUpdate === "string") lastUpdate = parseInt(lastUpdate);
+			
+		for (var eid in json.gameList) {
+			var jsonObj = json.gameList[eid];
+			Parser.addGameToList(new NFL.Match().fromJSON(jsonObj));	
+		}
+	} catch (e) {
+		console.log(e);
+	}
+	Logging.log(Logging.INFO, "Finished reading database");	
 }
-init();
 
-var gameList = {};
-var weekList = [];
+function writeDatabase() {
+	var obj = {lastUpdate: lastUpdate, gameList: Parser.gameList};
+	fs.writeFileSync("./database", JSON.stringify(obj));
+}
 
-var currentWeek = 1;
-var lastUpdate = 0;
+function exitHandler() {
+	exitted = true;
+	Logging.log(Logging.DEBUG, "Exiting");
+	return;
+}
+
+var exitted = false;
 
 function updateCycle() {
 	const currentTime = Date.now();
 
 	if (currentTime - lastUpdate > 1000 * 60 * 60 * 6) {
+		Logging.log(Logging.DEBUG, "Updating schedule");
 		lastUpdate = currentTime;
-		updateSchedule(YEAR, currentWeek, 26);
+		//Parser.updateSchedule(YEAR, Parser.currentWeek, 26);
+		Parser.updateSchedule(YEAR, 18, 21);
 	}
-	for (eid in gameList) {
-		var currentMatch = gameList[eid];
+
+	Logging.log(Logging.DEBUG, "Updating live matches");
+	for (var eid in Parser.gameList) {
+		var currentMatch = Parser.gameList[eid];
 		if (!currentMatch.over && currentMatch.date + 4 * 60 * 60 * 1000 < currentTime) {
-			updateGame(eid);			
+			Parser.updateGame(eid);
 		}
 	}
-	fs.writeFile("./data.log", JSON.stringify(gameList), function(err) {
-		if (err) {
-			return console.log(err);
-		}
-		console.log("File saved");
-	}); 
-	console.log("Finished updating games");
-	setTimeout(function() {
-		updateCycle();
-	}, 1000);
+
+	var timeElapsed = Math.max(UPDATE_TIME * 1000 - (Date.now() - currentTime), 0);
+	Logging.log(Logging.DEBUG, "Next cycle in " + timeElapsed + "ms");
+	if (!exitted) setTimeout(updateCycle, timeElapsed);
 }
 
 
-
-function updateSchedule(year, weekStart, weekEnd) {
-	const currentTime = Date.now();
-	var w = 26;
-	
-	weekStart = weekStart || 1;
-	weekEnd = weekEnd || 26;
-	//0 - 3: Preseason Week 1 - Week 4
-	//4 - 20: Regular Season Week 1 - Week 17
-	//21 - 24: Post Season Week 18 - Week 20 & Week 22
-	for (var i = weekStart, seasonType = "PRE"; i < weekEnd; i++) {
-		var week = i;
-		
-		if (i > 4) {
-			week -= 4;
-			seasonType = "REG";
-		}
-		if (week > 17) seasonType = "POST";
-		if (week == 21) week++;
-	
-		var path = schedule_url.replace("%1", year).replace("%2", seasonType).replace("%3", week);
-		var response = syncRequest("GET", path);
-		
-		xml.parseString(response.getBody(), (err, result) => {
-			if (typeof(result["ss"]) != "object") return;
-
-			var rootXML = result["ss"]["gms"][0]["g"];
-
-			for (var j = 0; j != rootXML.length; j++) {
-				var xmlGame = rootXML[j]["$"], eid = xmlGame.eid;				
-
-				if (!(eid in gameList)) gameList[eid] = new Match(eid, i, null, new Team(xmlGame.h), new Team(xmlGame.v));
-				var currentMatch = gameList[eid];
-				
-				var rawTime = xmlGame.t.split(":"); //time (format hh:mm)
-				
-				var rawDate = new Date(parseInt(eid.substr(0, 4)), //year
-						parseInt(eid.substr(4, 2)) - 1, //month (-1 since January has index 0)
-						parseInt(eid.substr(6, 2)), //day
-						parseInt(rawTime[0]), //hour
-						parseInt(rawTime[1])); //minute
-
-				currentMatch.date = rawDate.getTime();
-				currentMatch.week = i;
-				
-				if (currentMatch.date > currentTime && i < w) w = i;
-
-				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
-					currentMatch.homeTeam.abbr = xmlGame.h;
-					currentMatch.homeTeam.score[0] = parseInt(xmlGame.hs);
-					currentMatch.awayTeam.abbr = xmlGame.v;
-					currentMatch.awayTeam.score[0] = parseInt(xmlGame.vs);
-				}
-
-				if (xmlGame.q === "F") {
-					currentMatch.quarter = "Final";
-					currentMatch.gameClock = "";
-				} else if (xmlGame.q === "FO") {
-					currentMatch.quarter = "Final Overtime";
-					currentMatch.gameClock = "";
-				}
-				
-				gameList[eid] = currentMatch;
-			}
-			
-		});
-	}
-	currentWeek = w;
-	
+function init() {
+	//process.on("exit", exitHandler);
+	process.on("SIGINT", exitHandler);
+	readDatabase();
+	updateCycle();
+	server.listen(PORT);
 }
-function updateGame(eid) {	
-	var path = game_url.replace(/%1/g, eid);
-	var response = syncRequest("GET", path);
-	try {
-		var rootJSON = JSON.parse(response.getBody());
-		if (typeof rootJSON[eid] !== "object") return;
-	
-		if (!(eid in gameList)) gameList[eid] = new Match(eid, null, null, null); 
-		var currentMatch = gameList[eid];
-			
+init();
 
-		const updateKey = rootJSON["nextupdate"];
-		if (updateKey === currentMatch.updateKey) return;
-
-		currentMatch.updateKey = updateKey;		
-		rootJSON = rootJSON[eid];
-		
-		var currentDriveId;
-		for (key in rootJSON) {
-			var jsonObj = rootJSON[key];
-			switch (key) {
-				case "home":
-				case "away":
-					var currentTeam = new Team(jsonObj.abbr);
-					var jsonTeamStats = jsonObj["stats"]["team"];
-					
-					for (qtr in jsonObj["score"]) {
-						var val = parseInt(jsonObj["score"][qtr]);
-						if (qtr == "T") currentTeam.score[0] = val;
-						else currentTeam.score[parseInt(qtr)] = val;
-					}
-					for (stat in jsonTeamStats) {
-						currentTeam.stats[stat] = jsonTeamStats[stat];
-					}
-					currentTeam.timeouts = jsonObj.to;
-											
-					if (key == "home") currentMatch.homeTeam = currentTeam;
-					else currentMatch.awayTeam = currentTeam;
-					break;
-				case "drives":
-					var currentDrives = currentMatch.drives;
-					for (did in jsonObj) {
-						if (did == "crntdrv") {
-							currentDriveId = jsonObj["crntdrv"];
-							continue;
-						}
-						
-						var jsonDrive = jsonObj[did];
-						var jsonPlays = jsonDrive["plays"];
-						var currentDrive = new Drive(did, jsonDrive.posteam, jsonDrive.postime, jsonDrive.ydsgained,
-							jsonDrive.penyds, jsonDrive.result);
-
-												
-						var updated = false;
-						for (pid in jsonPlays) {
-							var jsonPlay = jsonPlays[pid];
-							var currentPlay = new Play(pid, jsonPlay.qtr, jsonPlay.time, jsonPlay.down, jsonPlay.ydstogo,
-								jsonPlay.yrdln, jsonPlay.desc.replace(/\([0-9]*:[0-9]{1,2}\)\s/, ""));
-
-							if (pid in currentDrive.plays) continue;
-
-							currentPlay.updateKey = updateKey;							
-							currentDrive.plays[pid] = currentPlay;
-							updated = true;							
-						}
-						
-						if (updated || !(did in currentMatch.drives)) {
-							currentDrive.updateKey = updateKey;
-							currentMatch.drives[did] = currentDrive;
-						}					
-					}				
-					break;
-				case "scrsummary":
-					var currentScoringPlays = currentMatch.scoringPlays;
-					for (spid in jsonObj) {
-						if (spid in currentScoringPlays) continue;
-
-						var jsonSp = jsonObj[spid];
-						currentScoringPlays[spid] = new ScoringPlay(jsonSp.type, jsonSp.team, jsonSp.desc, updateKey);
-					}
-					currentMatch.scoringPlays = currentScoringPlays;					
-					break;
-			}					
-		}
-		
-		currentMatch.quarter = (rootJSON.qtr !== "final overtime") ? rootJSON.qtr : "Final OT";
-		currentMatch.gameClock = rootJSON.clock;
-
-		if (currentMatch.quarter.indexOf("Final") === 0) {
-			currentMatch.over = true;
-		}
-
-		if (!currentMatch.over && currentDriveId !== 0) {			
-			var cd = currentMatch.drives[currentDriveId];
-			var maxPlay = 0;
-			for (var p in cd.plays) {
-				var i = parseInt(p);
-				if (i > maxPlay) maxPlay = p;
-			}
-			
-			var cp = cd.plays[p];
-			
-			currentMatch.crntdrv = {
-				posteam: cd.posteam,
-				down: cp.down,
-				ydstogo: cp.ydstogo,
-				yrdln: cp.yrdln,
-				desc: cp.description				
-			};
-		} else currentMatch.crntdrv = null;
-
-		gameList[eid] = currentMatch;
-	} catch (e) {
-		console.log(e);
-	}
-}
