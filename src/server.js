@@ -11,7 +11,6 @@ const UPDATE_TIME = 5; //5 seconds
 
 var lastUpdate = 0;
 
-
 let server = http.createServer(function (req, res) {
 	console.log(req.headers);
 	try {
@@ -86,8 +85,8 @@ function readDatabase() {
 	var json = JSON.parse(result);
 	try {
 		lastUpdate = json.lastUpdate || 0;
-		if (typeof lastUpdate === "string") lastUpdate = parseInt(lastUpdate);
-			
+		Parser.currentWeek = json.currentWeek || 1;
+					
 		for (var eid in json.gameList) {
 			var jsonObj = json.gameList[eid];
 			Parser.addGameToList(new NFL.Match().fromJSON(jsonObj));	
@@ -99,17 +98,16 @@ function readDatabase() {
 }
 
 function writeDatabase() {
-	var obj = {lastUpdate: lastUpdate, gameList: Parser.gameList};
+	var obj = {lastUpdate: lastUpdate, currentWeek: Parser.currentWeek, gameList: Parser.gameList};
 	fs.writeFileSync("./database", JSON.stringify(obj));
 }
 
 function exitHandler() {
-	exitted = true;
-	Logging.log(Logging.DEBUG, "Exiting");
-	return;
+	console.log();
+	Logging.log(Logging.INFO, "Exiting");
+	writeDatabase();
+	process.exit();	
 }
-
-var exitted = false;
 
 function updateCycle() {
 	const currentTime = Date.now();
@@ -117,8 +115,7 @@ function updateCycle() {
 	if (currentTime - lastUpdate > 1000 * 60 * 60 * 6) {
 		Logging.log(Logging.DEBUG, "Updating schedule");
 		lastUpdate = currentTime;
-		//Parser.updateSchedule(YEAR, Parser.currentWeek, 26);
-		Parser.updateSchedule(YEAR, 18, 21);
+		Parser.updateSchedule(YEAR, Parser.currentWeek, 26);
 	}
 
 	Logging.log(Logging.DEBUG, "Updating live matches");
@@ -131,12 +128,11 @@ function updateCycle() {
 
 	var timeElapsed = Math.max(UPDATE_TIME * 1000 - (Date.now() - currentTime), 0);
 	Logging.log(Logging.DEBUG, "Next cycle in " + timeElapsed + "ms");
-	if (!exitted) setTimeout(updateCycle, timeElapsed);
+	setTimeout(updateCycle, timeElapsed);
 }
 
 
 function init() {
-	//process.on("exit", exitHandler);
 	process.on("SIGINT", exitHandler);
 	readDatabase();
 	updateCycle();

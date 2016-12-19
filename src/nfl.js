@@ -65,7 +65,8 @@ class Match {
 			for (var d in this.drives) {
 				var currentDrive = this.drives[d];
 				if (currentDrive.updateKey > updateKey) {
-					obj.drives.push(currentDrive.getJSON(updateKey));
+					var drv = currentDrive.getJSON(updateKey);
+					if (json) obj.drives.push(drv);
 				}
 			}
 			obj.upk = this.updateKey;		
@@ -136,7 +137,8 @@ class Drive {
 				obj.plays.push(currentPlay.getJSON());
 			}
 		}
-		return obj;		
+		if (obj.plays.length === 0) return null;
+		return obj;
 	}
 }
 class ScoringPlay {
