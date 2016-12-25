@@ -1,4 +1,5 @@
 const NFL = require("./nfl.js");
+const Stats = require("./stats.js");
 const syncRequest = require("sync-request"), xml = require("xml2js");
 
 const schedule_url = "http://www.nfl.com/ajax/scorestrip?season=%1&seasonType=%2&week=%3";
@@ -11,16 +12,19 @@ function addGameToList(match) {
 	gameList[match.eid] = match;
 }
 
+function getCurrentWeek() { return currentWeek; }
+function setCurrentWeek(val) { currentWeek = val; }
+
 function updateSchedule(year, weekStart, weekEnd) {
 	const currentTime = Date.now();
 
 	var w = 26;	
 	weekStart = weekStart || 1;
-	weekEnd = weekEnd || 26;
+	weekEnd = weekEnd || 25;
 	//0 - 3: Preseason Week 1 - Week 4
 	//4 - 20: Regular Season Week 1 - Week 17
 	//21 - 24: Post Season Week 18 - Week 20 & Week 22
-	for (var i = weekStart, seasonType = "PRE"; i < weekEnd; i++) {
+	for (var i = weekStart, seasonType = "PRE"; i <= weekEnd; i++) {
 		var week = i;		
 		if (i > 4) {
 			week -= 4;
@@ -54,8 +58,10 @@ function updateSchedule(year, weekStart, weekEnd) {
 				currentMatch.date = rawDate.getTime();
 				currentMatch.week = i;
 			
-				if (currentMatch.date > currentTime && i < w) w = i;
-
+				if (currentMatch.date > currentTime && i < w) {
+					w = i;
+					console.log("asd3", w);
+				}
 				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
 					currentMatch.homeTeam.abbr = xmlGame.h;
 					currentMatch.homeTeam.score[0] = parseInt(xmlGame.hs);
@@ -76,6 +82,7 @@ function updateSchedule(year, weekStart, weekEnd) {
 		});
 	}
 	currentWeek = w;
+	//console.log("asd", currentWeek);
 }
 
 function updateGame(eid) {	
@@ -94,23 +101,58 @@ function updateGame(eid) {
 
 		currentMatch.updateKey = updateKey;		
 		rootJSON = rootJSON[eid];
-		
+	
+		currentMatch.quarter = (rootJSON.qtr !== "final overtime") ? rootJSON.qtr : "Final OT";
+		currentMatch.gameClock = rootJSON.clock;
+		if (currentMatch.quarter.indexOf("Final") === 0) {
+			currentMatch.over = true;
+		}
+	
 		var currentDriveId;
 		for (key in rootJSON) {
-			var jsonObj = rootJSON[key];
+			var jsonObj = rootJSON[key];			
 			switch (key) {
 				case "home":
 				case "away":
-					var currentTeam = new NFL.Team(jsonObj.abbr);
-					var jsonTeamStats = jsonObj["stats"]["team"];
+					var abbr = jsonObj.abbr;
+					var currentTeam = new NFL.Team(abbr);
+
+					if (currentMatch.over) {
+						if (typeof Stats.teamStats[abbr] === "undefined") Stats.teamStats[abbr] = new Stats.Team(abbr);
+						var currentTeamStats = Stats.teamStats[abbr];								
+						for (var statCategory in jsonObj.stats) {
+							var jsonStatCategory = jsonObj.stats[statCategory];
+							if (statCategory !== "team") { //player stats are handled differently
+								for (var pid in jsonStatCategory) {
+									var jsonStatPlayer = jsonStatCategory[pid];
+
+									if (!(pid in Stats.playerStats)) Stats.playerStats[pid] = new Stats.Player(pid, jsonStatPlayer.name, abbr);
+									var currentPlayer = Stats.playerStats[pid];
+											
+									if (!(statCategory in currentPlayer.stats)) currentPlayer.stats[statCategory] = {};
+									for (var statKey in jsonStatPlayer) {
+										if (statKey === "name") continue;
+										if (!(statKey in currentPlayer.stats[statCategory])) currentPlayer.stats[statCategory][statKey] = new Stats.Stat(statKey, 0, statCategory);
+										currentPlayer.stats[statCategory][statKey].add(jsonStatPlayer[statKey]);
+									}
+									currentPlayer.matches++;
+								}
+							} else { //than team stats	
+								for (var teamKey in jsonStatCategory) {
+									if (teamKey === "top") continue; //TODO: Add compatibility for `Time of Possession` string (e.g.: 15:00 or 3:28)
+									if (!(teamKey in currentTeamStats.stats)) currentTeamStats.stats[teamKey] = new Stats.Stat(teamKey, 0, statCategory);
+									currentTeamStats.stats[teamKey].add(jsonStatCategory[teamKey]);
+								}
+							}
+						}
+						currentTeamStats.matches++;
+					}
 					
+					for (var statKey in jsonObj.stats.team) currentTeam.stats[statKey] = jsonObj.stats.team[statKey];
 					for (qtr in jsonObj["score"]) {
 						var val = parseInt(jsonObj["score"][qtr]);
 						if (qtr == "T") currentTeam.score[0] = val;
 						else currentTeam.score[parseInt(qtr)] = val;
-					}
-					for (stat in jsonTeamStats) {
-						currentTeam.stats[stat] = jsonTeamStats[stat];
 					}
 					currentTeam.timeouts = jsonObj.to;
 											
@@ -145,8 +187,8 @@ function updateGame(eid) {
 						if (updated || !(did in currentMatch.drives)) {
 							currentDrive.updateKey = updateKey;
 							currentMatch.drives[did] = currentDrive;
-						}					
-					}				
+						}
+					}
 					break;
 				case "scrsummary":
 					var currentScoringPlays = currentMatch.scoringPlays;
@@ -158,14 +200,9 @@ function updateGame(eid) {
 					}
 					currentMatch.scoringPlays = currentScoringPlays;					
 					break;
-			}					
-		}		
-		currentMatch.quarter = (rootJSON.qtr !== "final overtime") ? rootJSON.qtr : "Final OT";
-		currentMatch.gameClock = rootJSON.clock;
-		if (currentMatch.quarter.indexOf("Final") === 0) {
-			currentMatch.over = true;
+			}
 		}
-
+		
 		if (!currentMatch.over && currentDriveId !== 0) {			
 			var cd = currentMatch.drives[currentDriveId];
 			var maxPlay = 0;
@@ -192,7 +229,8 @@ function updateGame(eid) {
 }
 
 module.exports = {
-	currentWeek: currentWeek,
+	getCurrentWeek: getCurrentWeek,
+	setCurrentWeek: setCurrentWeek,
 	gameList: gameList,
 	addGameToList: addGameToList,
 	updateSchedule: updateSchedule,

@@ -66,12 +66,13 @@ class Match {
 				var currentDrive = this.drives[d];
 				if (currentDrive.updateKey > updateKey) {
 					var drv = currentDrive.getJSON(updateKey);
-					if (json) obj.drives.push(drv);
+					obj.drives.push(drv);
 				}
 			}
-			obj.upk = this.updateKey;		
 		}
 		if (this.crntdrv !== null && params.crntdrv) obj.crntdrv = this.crntdrv;
+
+		obj.upk = this.updateKey;
 		
 		return obj;
 	}
