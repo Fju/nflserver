@@ -1,23 +1,19 @@
-const http = require("http");
+const http = require("http"), syncRequest = require("sync-request");
 
 var options = {
-	port: 5124,
 	method: "GET",
-	headers: {
-		"req-type": "Game",
-		"eid": "2016120400",
-		"update-key": 17
-	}};
+	hostname: "images.unsplash.com",
+	path: "/photo-1423012373122-fff0a5d28cc9"
+	};
 
+var finished = false;
 
-var req = http.request(options, (res) => {
-	var data = "";
-	res.setEncoding("utf8");
-	res.on("data", (chunk) => {
-		data += chunk;
-	});
-	res.on("end", () => {
-		console.log(data);
-	});
+let server = http.createServer(function (req, res) {
+	res.statusCode = 200;
+	res.end("asdasdasd");
 });
-req.end();
+server.listen(27800);
+
+syncRequest("GET", "https://" + options.hostname + options.path);
+
+

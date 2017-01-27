@@ -34,7 +34,7 @@ function log(subject, content) {
 		const now = Date.now();
 		
 		prefix = now.toString(16).time + " " + prefix; 
-	}	
+	}
 	console.log(prefix, content);
 }
 

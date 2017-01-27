@@ -1,5 +1,4 @@
-const http = require("http"),
-	fs = require("fs");
+const http = require("http"), fs = require("fs"), time = require("time");
 
 const Parser = require("./parser.js");
 const NFL = require("./nfl.js");
@@ -20,7 +19,7 @@ let server = http.createServer(function (req, res) {
 		switch (reqType) {
 			case "Schedule":
 				var obj = {currentWeek: Parser.getCurrentWeek()};
-				
+			
 				var weekStart = req.headers["week-start"] || "0",
 					weekEnd = req.headers["week-end"] || "0";					
 
@@ -66,9 +65,9 @@ let server = http.createServer(function (req, res) {
 		}
 
 		if (data === "{}") throw new Error("No data");
-		console.log(data);
 		res.statusCode = 200;
 		res.end(data);
+		console.log(data);
 	} catch (e) {
 		res.statusCode = 404;
 		res.end(e.message);
@@ -90,6 +89,7 @@ function readDatabase() {
 				var jsonObj = json.gameList[eid];
 				Parser.addGameToList(new NFL.Match().fromJSON(jsonObj));	
 			}
+			Logging.log(Logging.INFO, "Successfully loaded database");
 		} catch (e) {
 			console.log(e);
 		}
@@ -98,9 +98,14 @@ function readDatabase() {
 		try {
 			result = fs.readFileSync("./statistics", "utf-8");
 			json = JSON.parse(result);			
-			var jsonTeam = json.team, jsonPlayers = json.players;
-
-
+			var jsonTeam = json.teams, jsonPlayers = json.players;
+			
+			jsonTeam.forEach((element) => {
+				Stats.teamStats[element.abbr] = new Stats.Team().fromJSON(element);
+			});
+			jsonPlayers.forEach((element) => {
+				Stats.playerStats[element.pid] = new Stats.Player().fromJSON(element);
+			});
 		} catch (e) {
 			console.log(e);
 		}		
@@ -109,9 +114,9 @@ function readDatabase() {
 
 function writeDatabase() {
 	var obj = {lastUpdate: lastUpdate, currentWeek: Parser.getCurrentWeek(), gameList: Parser.gameList};
-	var obj2 = {team: Stats.teamStats, players: Stats.playerStats};
+
 	fs.writeFileSync("./database", JSON.stringify(obj));
-	fs.writeFileSync("./statistics", JSON.stringify(obj2));
+	fs.writeFileSync("./statistics", Stats.getStats(Stats.ALL));
 	Logging.log(Logging.INFO, "Succesfully saved files");
 }
 
@@ -122,32 +127,58 @@ function exitHandler() {
 	process.exit();
 }
 
-function updateCycle() {
-	const currentTime = Date.now();
-	
-	try {
-		if (currentTime - lastUpdate > 1000 * 60 * 30) {
-			Logging.log(Logging.DEBUG, "Updating schedule");
-			lastUpdate = currentTime;
-			//Parser.updateSchedule(YEAR, Parser.getCurrentWeek(), 25);
-			Parser.updateSchedule(YEAR, 20, 20);
+function doTasks(tasks, callback) {
+	if (tasks.length !== 0) {
+		var task = tasks[0];
+		if (task.type === "schedule") {
+			var week = task.param, seasonType = "PRE";
+			if (week > 4) {
+				week -= 4;
+				seasonType = "REG";
+			}
+			if (week > 17) seasonType = "POST";
+			if (week == 21) week++;
+			
+			Parser.updateSchedule(2016, seasonType, week, () => {
+				tasks.shift();
+				doTasks(tasks, callback);
+			});
+		} else if (task.type === "game") {
+			Parser.updateGame(task.param, () => {
+				tasks.shift();				
+				doTasks(tasks, callback);
+			});
 		}
+	} else callback();
+}
 
-		Logging.log(Logging.DEBUG, "Updating live matches");
+function updateCycle() {
+	const currentTime = Date.now() - time.localtime().gmtOffset * 1000;
+	const start = Date.now();
+	
+	Logging.log(Logging.DEBUG, "Starting update cycle...");
+	var tasks = [];
+	if (currentTime - lastUpdate > 1000 * 60 * 30) {		
+		for (var i = Parser.getCurrentWeek(); i <= 4; i++) {
+			tasks.push({type: "schedule", param: i});
+		}
+		lastUpdate = currentTime;
+	} else {
 		for (var eid in Parser.gameList) {
 			var currentMatch = Parser.gameList[eid];
 			if (!currentMatch.over && currentMatch.date + 4 * 60 * 60 * 1000 < currentTime) {
-				Parser.updateGame(eid);
+				tasks.push({type: "game", param: eid});
 			}
 		}
-		console.log(JSON.stringify(Stats.playerStats, null, "  "));		
-
-		var timeElapsed = Math.max(UPDATE_TIME * 1000 - (Date.now() - currentTime), 0);
-		Logging.log(Logging.DEBUG, "Next cycle in " + timeElapsed + "ms");
-		setTimeout(updateCycle, timeElapsed);
-	} catch (e) {
-		console.log(e);
 	}
+	console.log(tasks);
+
+	doTasks(tasks, () => {
+		var elapsed = Date.now() - start;
+		Logging.log(Logging.DEBUG, "Cycle ended. Time elapsed: " + elapsed + "ms");
+
+		setTimeout(updateCycle, Math.max(5000 - elapsed, 0));
+	});
 }
 
 
