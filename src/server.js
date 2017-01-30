@@ -18,7 +18,7 @@ let server = http.createServer(function (req, res) {
 		var data = "{}";
 		switch (reqType) {
 			case "Schedule":
-				var obj = {currentWeek: Parser.getCurrentWeek()};
+				var obj = {currentWeek: Parser.currentWeek};
 			
 				var weekStart = req.headers["week-start"] || "0",
 					weekEnd = req.headers["week-end"] || "0";					
@@ -84,7 +84,8 @@ function readDatabase() {
 			json = JSON.parse(result);
 
 			lastUpdate = json.lastUpdate || 0;
-			Parser.setCurrentWeek(json.currentWeek || 1);			
+			Parser.currentWeek = json.currentWeek || 1;
+			
 			for (var eid in json.gameList) {
 				var jsonObj = json.gameList[eid];
 				Parser.addGameToList(new NFL.Match().fromJSON(jsonObj));	
@@ -113,8 +114,8 @@ function readDatabase() {
 }
 
 function writeDatabase() {
-	var obj = {lastUpdate: lastUpdate, currentWeek: Parser.getCurrentWeek(), gameList: Parser.gameList};
-
+	var obj = {lastUpdate: lastUpdate, currentWeek: Parser.currentWeek, gameList: Parser.gameList};
+	console.log(obj.currentWeek);
 	fs.writeFileSync("./database", JSON.stringify(obj));
 	fs.writeFileSync("./statistics", Stats.getStats(Stats.ALL));
 	Logging.log(Logging.INFO, "Succesfully saved files");
@@ -131,15 +132,7 @@ function doTasks(tasks, callback) {
 	if (tasks.length !== 0) {
 		var task = tasks[0];
 		if (task.type === "schedule") {
-			var week = task.param, seasonType = "PRE";
-			if (week > 4) {
-				week -= 4;
-				seasonType = "REG";
-			}
-			if (week > 17) seasonType = "POST";
-			if (week == 21) week++;
-			
-			Parser.updateSchedule(2016, seasonType, week, () => {
+			Parser.updateSchedule(task.param, () => {
 				tasks.shift();
 				doTasks(tasks, callback);
 			});
@@ -159,7 +152,7 @@ function updateCycle() {
 	Logging.log(Logging.DEBUG, "Starting update cycle...");
 	var tasks = [];
 	if (currentTime - lastUpdate > 1000 * 60 * 30) {		
-		for (var i = Parser.getCurrentWeek(); i <= 4; i++) {
+		for (var i = Parser.currentWeek; i <= 25; i++) {
 			tasks.push({type: "schedule", param: i});
 		}
 		lastUpdate = currentTime;
@@ -171,12 +164,10 @@ function updateCycle() {
 			}
 		}
 	}
-	console.log(tasks);
-
+	
 	doTasks(tasks, () => {
 		var elapsed = Date.now() - start;
 		Logging.log(Logging.DEBUG, "Cycle ended. Time elapsed: " + elapsed + "ms");
-
 		setTimeout(updateCycle, Math.max(5000 - elapsed, 0));
 	});
 }

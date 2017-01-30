@@ -5,25 +5,30 @@ const request = require("request"), xml = require("xml2js"), time = require("tim
 const schedule_url = "http://www.nfl.com/ajax/scorestrip?season=%1&seasonType=%2&week=%3";
 const game_url = "http://www.nfl.com/liveupdate/game-center/%1/%1_gtd.json";
 
-var currentWeek = 1;
+const YEAR = 2016;
+
 var gameList = {};
 
 function addGameToList(match) {
 	gameList[match.eid] = match;
 }
 
-function getCurrentWeek() { return currentWeek; }
-function setCurrentWeek(val) { currentWeek = val; }
-
-
-function updateSchedule(year, seasonType, week, callback) {
+function updateSchedule(week, callback) {
 	const currentTime = Date.now() - time.localtime().gmtOffset * 1000;	
 	
-	var path = schedule_url.replace("%1", year).replace("%2", seasonType).replace("%3", week);		
+	var weekNr = week, seasonType = "PRE";
+	if (weekNr > 4) {
+		weekNr -= 4;
+		seasonType = "REG";
+	}
+	if (weekNr > 17) seasonType = "POST";
+	if (weekNr == 21) weekNr++;
+
+	var path = schedule_url.replace("%1", YEAR).replace("%2", seasonType).replace("%3", weekNr);
 	request(path, (error, response, body) => {
-		if (response.statusCode !== 200) return;	
+		if (response.statusCode !== 200) return;
 		xml.parseString(body, (err, result) => {
-			var w = 1;
+			var w = module.exports.currentWeek;
 
 			if (typeof(result["ss"]) != "object") return;
 
@@ -32,7 +37,7 @@ function updateSchedule(year, seasonType, week, callback) {
 			for (var j = 0; j != rootXML.length; j++) {
 				var xmlGame = rootXML[j]["$"], eid = xmlGame.eid;				
 
-				if (!(eid in gameList)) gameList[eid] = new NFL.Match(eid, currentWeek, null, new NFL.Team(xmlGame.h), new NFL.Team(xmlGame.v));
+				if (!(eid in gameList)) gameList[eid] = new NFL.Match(eid, week, null, new NFL.Team(xmlGame.h), new NFL.Team(xmlGame.v));
 				var currentMatch = gameList[eid];
 				
 				var rawTime = xmlGame.t.split(":"); //time (format hh:mm)
@@ -44,10 +49,10 @@ function updateSchedule(year, seasonType, week, callback) {
 						parseInt(rawTime[1])); //minute
 
 				currentMatch.date = rawDate.getTime() + (18000 + time.localtime().gmtOffset) * 1000; //UTC
-				currentMatch.week = currentWeek;
+				currentMatch.week = week;
 			
 				if (currentMatch.date < currentTime && week >= w) {
-					w = currentWeek;
+					w = week;
 					if (j === rootXML.length - 1) w++;
 				}
 				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
@@ -66,7 +71,7 @@ function updateSchedule(year, seasonType, week, callback) {
 				
 				gameList[eid] = currentMatch;
 			}
-			setCurrentWeek(w);
+			module.exports.currentWeek = w;				
 			callback();
 		});		
 	});
@@ -219,8 +224,7 @@ function updateGame(eid, callback) {
 }
 
 module.exports = {
-	getCurrentWeek: getCurrentWeek,
-	setCurrentWeek: setCurrentWeek,
+	currentWeek: 1,
 	gameList: gameList,
 	addGameToList: addGameToList,
 	updateSchedule: updateSchedule,
