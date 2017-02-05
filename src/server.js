@@ -146,8 +146,7 @@ function doTasks(tasks, callback) {
 }
 
 function updateCycle() {
-	const currentTime = Date.now() - time.localtime().gmtOffset * 1000;
-	const start = Date.now();
+	const currentTime = Date.now();
 	
 	Logging.log(Logging.DEBUG, "Starting update cycle...");
 	var tasks = [];
@@ -159,14 +158,14 @@ function updateCycle() {
 	} else {
 		for (var eid in Parser.gameList) {
 			var currentMatch = Parser.gameList[eid];
-			if (!currentMatch.over && currentMatch.date + 4 * 60 * 60 * 1000 < currentTime) {
+			if (!currentMatch.over && currentMatch.date - 30 * 60 * 1000 < currentTime) {
 				tasks.push({type: "game", param: eid});
 			}
 		}
 	}
 	
 	doTasks(tasks, () => {
-		var elapsed = Date.now() - start;
+		var elapsed = Date.now() - currentTime;
 		Logging.log(Logging.DEBUG, "Cycle ended. Time elapsed: " + elapsed + "ms");
 		setTimeout(updateCycle, Math.max(5000 - elapsed, 0));
 	});
