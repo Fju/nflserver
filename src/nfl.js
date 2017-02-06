@@ -8,6 +8,12 @@ class Match {
 		
 		this.quarter = "";
 		this.gameClock = "";
+		this.yl = "";
+		this.down = "";
+		this.togo = "";
+		this.posteam = "";
+		this.redzone = false;
+
 		this.drives = {};
 		this.scoringPlays = {};
 
@@ -21,6 +27,12 @@ class Match {
 		this.date = json.date;
 		this.quarter = json.quarter;
 		this.gameClock = json.gameClock;
+		this.yl = json.yl;
+		this.down = json.down;
+		this.togo = json.togo;
+		this.posteam = json.posteam;
+		this.redzone = json.redzone;
+
 		this.over = json.over;
 		this.crntdrv = json.crntdrv;
 		this.updateKey = json.updateKey;
@@ -59,6 +71,11 @@ class Match {
 
 			obj.qtr = this.quarter;
 			obj.clock = this.gameClock;
+			obj.yl = this.yl;
+			obj.down = this.down;
+			obj.togo = this.togo;
+			obj.posteam = this.posteam;
+			obj.redzone = this.redzone;
 		}	
 		if (params.drives) {
 			obj.drives = [];

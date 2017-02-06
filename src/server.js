@@ -151,7 +151,7 @@ function updateCycle() {
 	Logging.log(Logging.DEBUG, "Starting update cycle...");
 	var tasks = [];
 	if (currentTime - lastUpdate > 1000 * 60 * 30) {		
-		for (var i = Parser.currentWeek; i <= 25; i++) {
+		for (var i = Parser.getCurrentWeek(); i <= 25; i++) {
 			tasks.push({type: "schedule", param: i});
 		}
 		lastUpdate = currentTime;
@@ -163,8 +163,7 @@ function updateCycle() {
 			}
 		}
 	}
-	
-	doTasks(tasks, () => {
+	doTasks(tasks, () => {		
 		var elapsed = Date.now() - currentTime;
 		Logging.log(Logging.DEBUG, "Cycle ended. Time elapsed: " + elapsed + "ms");
 		setTimeout(updateCycle, Math.max(5000 - elapsed, 0));

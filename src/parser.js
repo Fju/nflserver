@@ -25,7 +25,7 @@ function updateSchedule(week, callback) {
 	if (weekNr == 21) weekNr++;
 
 	var path = schedule_url.replace("%1", YEAR).replace("%2", seasonType).replace("%3", weekNr);
-	request(path, (error, response, body) => {
+	request({method: "GET", uri: path, timeout: 2000}, (error, response, body) => {
 		if (response.statusCode !== 200) return;
 		xml.parseString(body, (err, result) => {
 			var w = module.exports.currentWeek;
@@ -71,7 +71,7 @@ function updateSchedule(week, callback) {
 				
 				gameList[eid] = currentMatch;
 			}
-			module.exports.currentWeek = w;				
+			module.exports.currentWeek = Math.min(w, 25);				
 			callback();
 		});		
 	});
@@ -79,27 +79,31 @@ function updateSchedule(week, callback) {
 
 
 
-function updateGame(eid, callback) {	
+function updateGame(eid, callback) {		
 	var path = game_url.replace(/%1/g, eid);
-	request(path, (error, response, body) => {
+	request({method: "GET", uri: path, timeout: 2000}, (error, response, body) => {
 		try {		
 			var rootJSON = JSON.parse(body);
-			if (typeof rootJSON[eid] !== "object") return;
+			if (typeof rootJSON[eid] !== "object") throw new Error("No object");
 		
 			if (!(eid in gameList)) gameList[eid] = new NFL.Match(eid, null, null, null); 
 			var currentMatch = gameList[eid];
 
 			const updateKey = rootJSON["nextupdate"];
-			if (updateKey === currentMatch.updateKey) return;
+			if (updateKey === currentMatch.updateKey) throw new Error();
 
 			currentMatch.updateKey = updateKey;		
 			rootJSON = rootJSON[eid];
 		
 			currentMatch.quarter = (rootJSON.qtr !== "final overtime") ? rootJSON.qtr : "Final OT";
 			currentMatch.gameClock = rootJSON.clock;
-			if (currentMatch.quarter.indexOf("Final") === 0) {
-				currentMatch.over = true;
-			}
+			currentMatch.yl = rootJSON.yl;
+			currentMatch.down = rootJSON.down;
+			currentMatch.togo = rootJSON.togo;
+			currentMatch.posteam = rootJSON.posteam;
+			currentMatch.redzone = rootJSON.redzone;
+
+			if (currentMatch.quarter.indexOf("Final") === 0) currentMatch.over = true;
 		
 			var currentDriveId;
 			for (key in rootJSON) {
@@ -206,18 +210,12 @@ function updateGame(eid, callback) {
 				
 				var cp = cd.plays[p];
 				
-				currentMatch.crntdrv = {
-					posteam: cd.posteam,
-					down: cp.down,
-					ydstogo: cp.ydstogo,
-					yrdln: cp.yrdln,
-					desc: cp.description				
-				};
+				currentMatch.crntdrv = cp.description;
 			} else currentMatch.crntdrv = null;
 
 			gameList[eid] = currentMatch;
 		} catch (e) {
-			console.log(e);
+			//console.log(e);
 		}
 		callback();
 	});
