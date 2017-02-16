@@ -31,7 +31,7 @@ let server = http.createServer(function (req, res) {
 					var currentMatch = Parser.gameList[eid];
 					var w = currentMatch.week;
 					if ((currentWeekOnly && w === obj.currentWeek) || (w >= weekStart && w <= weekEnd)) {
-						obj[currentMatch.eid] = currentMatch.getJSON({crntdrv: true}, 0);
+						obj[currentMatch.eid] = currentMatch.getJSON({crntdrv: true, general: true}, 0);
 					}
 				}
 				data = JSON.stringify(obj);				
@@ -44,7 +44,7 @@ let server = http.createServer(function (req, res) {
 				updateKey = parseInt(updateKey);
 
 				if (eid in Parser.gameList) {
-					obj[eid] = Parser.gameList[eid].getJSON({drives: true, stats: true, crntdrv: true}, updateKey);
+					obj[eid] = Parser.gameList[eid].getJSON({drives: true, stats: true, crntdrv: true, general: true, scoringPlays: true}, updateKey);
 				}
 				data = JSON.stringify(obj);				
 				break;
@@ -56,7 +56,7 @@ let server = http.createServer(function (req, res) {
 				updateKey = parseInt(updateKey);
 				
 				if (eid in Parser.gameList) {
-					obj[eid] = Parser.gameList[eid].getJSON({scoreOnly: true}, updateKey);
+					obj[eid] = Parser.gameList[eid].getJSON({shortScore: true, scoringPlays: true}, updateKey);
 				}	
 				data = JSON.stringify(obj);
 				break;
@@ -151,7 +151,7 @@ function updateCycle() {
 	Logging.log(Logging.DEBUG, "Starting update cycle...");
 	var tasks = [];
 	if (currentTime - lastUpdate > 1000 * 60 * 30) {		
-		for (var i = Parser.getCurrentWeek(); i <= 25; i++) {
+		for (var i = Parser.currentWeek; i <= 25; i++) {
 			tasks.push({type: "schedule", param: i});
 		}
 		lastUpdate = currentTime;

@@ -193,7 +193,7 @@ function updateGame(eid, callback) {
 							if (spid in currentScoringPlays) continue;
 
 							var jsonSp = jsonObj[spid];
-							currentScoringPlays[spid] = new NFL.ScoringPlay(jsonSp.type, jsonSp.team, jsonSp.desc, updateKey);
+							currentScoringPlays[spid] = new NFL.ScoringPlay(jsonSp.qtr, jsonSp.type, jsonSp.team, jsonSp.desc, updateKey);
 						}
 						currentMatch.scoringPlays = currentScoringPlays;					
 						break;

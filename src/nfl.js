@@ -53,9 +53,11 @@ class Match {
 	getJSON(params, updateKey) {
 		var obj = {eid: this.eid};
 
-		if (params.scoreOnly) {
+		if (params.shortScore) {
 			obj.homeScore = this.homeTeam.score[0];
 			obj.awayScore = this.awayTeam.score[0];
+		}
+		if (params.scoringPlays) {
 			obj.scrplays = [];
 			for (var sp in this.scoringPlays) {
 				var currentScoringPlay = this.scoringPlays[sp];
@@ -63,7 +65,8 @@ class Match {
 					obj.scrplays.push(currentScoringPlay.getJSON());
 				}
 			}
-		} else {
+		}
+		if (params.general) {
 			obj.date = this.date / 1000;
 			obj.week = this.week;
 			obj.home = this.homeTeam.getJSON(params);
@@ -160,13 +163,15 @@ class Drive {
 	}
 }
 class ScoringPlay {
-	constructor(type, team, desc, updateKey) {
+	constructor(qtr, type, team, desc, updateKey) {
+		this.qtr = qtr;
 		this.type = type;
 		this.team = team;
 		this.description = desc;
 		this.updateKey = updateKey;
 	}
 	fromJSON(json) {
+		this.qtr = json.qtr;
 		this.type = json.type;
 		this.team = json.team;
 		this.description = json.description;
@@ -175,7 +180,7 @@ class ScoringPlay {
 		return this;
 	}
 	getJSON() {
-		var obj = {type: this.type, team: this.team, desc: this.description};
+		var obj = {qtr: this.qtr, type: this.type, team: this.team, desc: this.description};
 		return obj;
 	}
 }
