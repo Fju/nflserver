@@ -13,6 +13,15 @@ function addGameToList(match) {
 	gameList[match.eid] = match;
 }
 
+function getTeam(abbr) {
+	switch (abbr) {
+		case "JAC":
+			return "JAX";
+		default:
+			return abbr;
+	}
+}
+
 function updateSchedule(week, callback) {
 	const currentTime = Date.now() - time.localtime().gmtOffset * 1000;	
 	
@@ -56,9 +65,9 @@ function updateSchedule(week, callback) {
 					if (j === rootXML.length - 1) w++;
 				}
 				if (xmlGame.hs !== "" && xmlGame.vs !== "") {
-					currentMatch.homeTeam.abbr = xmlGame.h;
+					currentMatch.homeTeam.abbr = getTeam(xmlGame.h);
 					currentMatch.homeTeam.score[0] = parseInt(xmlGame.hs);
-					currentMatch.awayTeam.abbr = xmlGame.v;
+					currentMatch.awayTeam.abbr = getTeam(xmlGame.v);
 					currentMatch.awayTeam.score[0] = parseInt(xmlGame.vs);
 				}
 				if (xmlGame.q === "F") {
@@ -111,7 +120,7 @@ function updateGame(eid, callback) {
 				switch (key) {
 					case "home":
 					case "away":
-						var abbr = jsonObj.abbr;
+						var abbr = getTeam(jsonObj.abbr);
 						var currentTeam = new NFL.Team(abbr);
 
 						if (currentMatch.over) {
